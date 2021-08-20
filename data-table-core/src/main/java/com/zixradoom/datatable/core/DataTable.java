@@ -1,13 +1,13 @@
 
 package com.zixradoom.datatable.core;
 
-import java.util.Objects;
-import java.util.List;
-import java.util.ArrayList;
-import java.util.function.Supplier;
-import java.util.function.IntSupplier;
-
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Objects;
+import java.util.function.IntSupplier;
+import java.util.function.Supplier;
 
 public abstract class DataTable < E extends DataTable.Entry > {
   
@@ -16,19 +16,47 @@ public abstract class DataTable < E extends DataTable.Entry > {
   protected ByteBuffer table;
   protected final int entrySize;
   protected int entryCount;
-  protected final Factory factory;
+  protected final Factory < E > factory;
   protected final List < E > entries;
   
   protected DataTable ( Factory < E > factory ) {
-    this.entrySize = factory.getEntrySize ();
-    this.entryCount = 0;
+    this ( factory, ByteBuffer.allocate ( factory.getEntrySize () * DEFAULT_ENTRY_MULTIPLIER ), factory.getEntrySize (), 0 );
+  }
+  
+  protected DataTable ( Factory < E > factory, ByteBuffer table, int entrySize, int entryCount ) {
+    this.entrySize = entrySize;
+    this.entryCount = entryCount;
+    this.table = Objects.requireNonNull ( table );
     this.factory = Objects.requireNonNull ( factory );
-    this.table = ByteBuffer.allocate ( entrySize * DEFAULT_ENTRY_MULTIPLIER );
+    
+    if ( entrySize < 1 ) {
+      throw new IllegalArgumentException ( String.format ( "entrySize %d < 1", entrySize ) );
+    }
+    
+    if ( entryCount < 0 ) {
+      throw new IllegalArgumentException ( String.format ( "entryCount %d < 1", entryCount ) );
+    }
+    
+    if ( table.capacity() < entrySize * entryCount ) {
+      throw new IllegalArgumentException ( String.format ( "table too small %d < %d (size:%d,count:%d)", table.capacity(), entrySize * entryCount, entrySize, entryCount ) );
+    }
+    
     this.entries = new ArrayList <> ();
+    for ( int index = 0; index < entryCount; index++ ) {
+      newEntry ();
+    }
   }
   
   public E newEntry () {
-    throw new UnsupportedOperationException ( "not implemented" );
+    int index = entryCount;
+    entryCount++;
+    
+    E entry = factory.createEntry ( index, this::buffer, this::getEntrySize );
+    entries.add ( entry );
+    
+    updateBufferPositons();
+    
+    return entry;
   }
   
   public int getEntrySize () {
@@ -47,6 +75,14 @@ public abstract class DataTable < E extends DataTable.Entry > {
     return table.limit ();
   }
   
+  public List < E > getEntries () {
+    return Collections.unmodifiableList ( entries );
+  }
+  
+  public E getEntry ( int index ) {
+    return entries.get ( index );
+  }
+  
   private void updateBufferPositons () {
     table.limit ( entrySize * entryCount );
     table.position ( table.limit () );
@@ -61,7 +97,7 @@ public abstract class DataTable < E extends DataTable.Entry > {
   }
   
   public interface Factory < S extends Entry > {
-    S createEntry ( int index, Supplier < ByteBuffer > bufferGetter );
+    S createEntry ( int index, Supplier < ByteBuffer > bufferGetter, IntSupplier entrySizeGetter );
     int getEntrySize ();
   }
 }
