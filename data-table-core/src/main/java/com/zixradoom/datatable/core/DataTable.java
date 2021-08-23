@@ -20,31 +20,42 @@ public abstract class DataTable < E extends DataTable.Entry > {
   protected final List < E > entries;
   
   protected DataTable ( Factory < E > factory ) {
-    this ( factory, ByteBuffer.allocate ( factory.getEntrySize () * DEFAULT_ENTRY_MULTIPLIER ), factory.getEntrySize (), 0 );
+    this (
+      Objects.requireNonNull ( factory, "factory is null" ), 
+      ByteBuffer.allocate ( factory.getEntrySize () * DEFAULT_ENTRY_MULTIPLIER ),
+      factory.getEntrySize (), 
+      0 );
+  }
+  
+  protected DataTable ( Factory < E > factory, ByteBuffer table, int entrySize ) {
+    this ( factory, table, entrySize, 0 );
   }
   
   protected DataTable ( Factory < E > factory, ByteBuffer table, int entrySize, int entryCount ) {
     this.entrySize = entrySize;
     this.entryCount = entryCount;
-    this.table = Objects.requireNonNull ( table );
-    this.factory = Objects.requireNonNull ( factory );
+    this.table = Objects.requireNonNull ( table, "table is null" );
+    this.factory = Objects.requireNonNull ( factory, "factory is null" );
     
     if ( entrySize < 1 ) {
       throw new IllegalArgumentException ( String.format ( "entrySize %d < 1", entrySize ) );
     }
     
     if ( entryCount < 0 ) {
-      throw new IllegalArgumentException ( String.format ( "entryCount %d < 1", entryCount ) );
+      throw new IllegalArgumentException ( String.format ( "entryCount %d < 0", entryCount ) );
     }
     
     if ( table.capacity() < entrySize * entryCount ) {
-      throw new IllegalArgumentException ( String.format ( "table too small %d < %d (size:%d,count:%d)", table.capacity(), entrySize * entryCount, entrySize, entryCount ) );
+      throw new IllegalArgumentException ( String.format ( "table capacity too small %d < %d (size:%d,count:%d)", table.capacity(), entrySize * entryCount, entrySize, entryCount ) );
     }
     
     this.entries = new ArrayList <> ();
-    for ( int index = 0; index < entryCount; index++ ) {
-      newEntry ();
+    for ( int index = 0; index < this.entryCount; index++ ) {
+      E entry = factory.createEntry ( index, this::buffer, this::getEntrySize );
+      entries.add ( entry );
     }
+    
+    updateBufferPositons ();
   }
   
   public E newEntry () {
@@ -94,6 +105,7 @@ public abstract class DataTable < E extends DataTable.Entry > {
   
   public interface Entry {
     int getIndex ();
+    int getEntrySize ();
   }
   
   public interface Factory < S extends Entry > {
